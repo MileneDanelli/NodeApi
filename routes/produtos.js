@@ -1,6 +1,25 @@
 const express = require('express')
 const router = express.Router()
 const mysql = require('../mysql').pool
+const multer = require('multer')
+const login = require('../middleware/login')
+
+const storage = multer.diskStorage({
+    destination: function(req, file, cb) {
+        cb(null, './uploads/')
+    },
+    filename: function(req, file, cb) {
+        let data = new Date().toISOString().replace(/:/g, '-') + '-';
+        cb(null, data + file.originalname );
+    },
+})
+
+const upload = multer({
+    storage: storage,
+    limits: {
+        fileSize: 1024 * 1024 * 5
+    }
+})
 
 //Busca todos os produtos
 router.get('/', (req, res, next) => {
@@ -20,6 +39,7 @@ router.get('/', (req, res, next) => {
                             id_produto: prod.id_produto,
                             nome: prod.nome,
                             preco: prod.preco,
+                            produto_imagem: prod.produto_imagem,
                             request: {
                                 tipo: 'GET',
                                 descricao: 'Retorna detalhes do Produto.',
@@ -36,18 +56,20 @@ router.get('/', (req, res, next) => {
 })
 
 //Cadastra um produto
-router.post('/', (req, res, next) => {
+router.post('/', login.obrigatorio, upload.single('produto_imagem'), (req, res, next) => {
     mysql.getConnection((error, conn) => {
         
         if(error) { return res.status(500).send({ error: error }) }
         conn.query(
-            'INSERT INTO produtos (nome, preco) VALUES (?, ?)',
-            [req.body.nome, req.body.preco],
+            'INSERT INTO produtos (nome, preco, produto_imagem) VALUES (?, ?, ?)',
+            [
+                req.body.nome, 
+                req.body.preco,
+                req.file.path
+            ],
             
             (error, result, field) => {
-                
                 conn.release()
-
                 if(error) { return res.status(500).send({ error: error }) }
 
                 //Resposta com doc
@@ -57,6 +79,7 @@ router.post('/', (req, res, next) => {
                         id_produto: result.id_produto,
                         nome: req.body.nome,
                         preco: req.body.preco,
+                        produto_imagem: req.file.path,
                         request: {
                             tipo: 'GET',
                             descricao: 'Retorna todos os Produtos.',
@@ -95,6 +118,7 @@ router.get('/:id_produto', (req, res, next) => {
                         id_produto: result[0].id_produto,
                         nome: result[0].nome,
                         preco: result[0].preco,
+                        produto_imagem: result[0].produto_imagem,
                         request: {
                             tipo: 'GET',
                             descricao: 'Retorna todos os Produtos.',
@@ -110,7 +134,7 @@ router.get('/:id_produto', (req, res, next) => {
 })
 
 //Edita um produto
-router.patch('/', (req, res, next) => {
+router.patch('/', login.obrigatorio, (req, res, next) => {
     mysql.getConnection((error, conn) => {
         
         if(error) { return res.status(500).send({ error: error }) }
@@ -153,7 +177,7 @@ router.patch('/', (req, res, next) => {
 })
 
 //Deleta um produto
-router.delete('/', (req, res, next) => {
+router.delete('/', login.obrigatorio, (req, res, next) => {
     mysql.getConnection((error, conn) => {
         
         if(error) { return res.status(500).send({ error: error }) }
@@ -170,18 +194,13 @@ router.delete('/', (req, res, next) => {
                 //Resposta com doc
                 const response = {
                     mensagem: 'Produto Deletado.',
-                    produtoEditado: {
-                        id_produto: req.body.id_produto,
-                        nome: req.body.nome,
-                        preco: req.body.preco,
-                        request: {
-                            tipo: 'POST',
-                            descricao: 'Cadastro de Produto.',
-                            url: 'http://localhost:3000/produtos/',
-                            body: {
-                                nome: 'String',
-                                preco: 'Number'
-                            }
+                    request: {
+                        tipo: 'POST',
+                        descricao: 'Cadastro de Produto.',
+                        url: 'http://localhost:3000/produtos',
+                        body: {
+                            nome: 'String',
+                            preco: 'Number'
                         }
                     }
                 }
